@@ -4,12 +4,11 @@
 
 #include <iostream>
 #include <sstream>
+#include <algorithm>
 #include "Commands.h"
+#include "FileSystem.h"
 
-bool Commands::formatFile(const std::string& formatCommand) {
 
-    return false;
-}
 
 void Commands::commandController(const std::string& command) {
     SingleCommand comm = parseCommand(command);
@@ -88,7 +87,7 @@ void Commands::commandController(const std::string& command) {
             if(comm.params.size() != 2){
                 std::cerr << "Usage: incp <source-file> <target-file>" << std::endl;
             }else{
-                //TODO Call method
+                FileSystem::incp(comm.params.at(0), comm.params.at(1));
             }
             break;
         case OUTCP:
@@ -109,7 +108,12 @@ void Commands::commandController(const std::string& command) {
             if(comm.params.size() != 1){
                 std::cerr << "Usage: format <format-size>" << std::endl;
             }else{
-                //TODO Call method
+
+                if(comm.params.at(0).length() < 2){
+                    std::cerr << "Size was not entered correctly" << std::endl;
+                } else{
+                    FileSystem::formatSystem(comm.params.at(0));
+                }
             }
             break;
         default:

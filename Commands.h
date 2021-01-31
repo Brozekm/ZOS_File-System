@@ -24,6 +24,7 @@
 #define OUTCP 12
 #define LOAD 13
 #define FORMAT 14
+
 class SingleCommand{
 private:
 

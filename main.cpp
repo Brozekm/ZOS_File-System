@@ -2,8 +2,11 @@
 #include <langinfo.h>
 #include <sstream>
 #include "Commands.h"
+#include "FileSystem.h"
 
-bool loadFileSystem(char *string);
+bool loadFileSystem(char *fSysName);
+
+void formatSystem();
 
 int main(int argc, char *argv[]){
     if (argc < 2){
@@ -12,30 +15,40 @@ int main(int argc, char *argv[]){
         exit(1);
     }
     if(loadFileSystem(argv[1])){
-        std::cout << "File system loaded successfully" << std::endl;
+        std::cout << "File system "<< FileSystem::systemName <<" loaded successfully" << std::endl;
+        std::string input;
+        while (true){
+            getline(std::cin,input);
+            if (input =="exit"){
+                break;
+            }else{
+             Commands::commandController(input);
+            }
+        }
     }else{
-
+        std::cout << "FS was neither loaded or formatted correctly" << std::endl;
+        return 0;
     }
-
+    std::cout << "Exiting FS" << std::endl;
     return 0;
 }
 
 bool loadFileSystem(char *fSysName) {
+    FileSystem::systemName = fSysName;
     std::cout << "Loading file system: " << fSysName << std::endl;
-//    if(loadSystem(fSysName)){
-    if(true){
-        std::cout << "File system under name: " << fSysName << "does not exist!" << std::endl;
-        std::cout << "For initializing this File system please enter system size." << std::endl;
-        std::string systemSize;
-        getline(std::cin, systemSize);
-        std::cout << "System size: "<< systemSize << std::endl;
-
-        //TODO DELE TEXT BELOW - just for test
-        std::string tmpS;
-        getline(std::cin, tmpS);
-        Commands::commandController(tmpS);
+    if(!FileSystem::loadSystem()){
+        formatSystem();
     }
-    return true;
+
+    return FileSystem::isSystemRunning();
+}
+
+void formatSystem() {
+    std::cout << "File system under name: " << FileSystem::systemName << " does not exist!" << std::endl;
+    std::cout << "For initializing this File system please enter system size." << std::endl;
+    std::string systemSize;
+    getline(std::cin, systemSize);
+    Commands::commandController(systemSize);
 }
 
 
