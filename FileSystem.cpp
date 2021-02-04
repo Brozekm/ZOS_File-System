@@ -34,14 +34,13 @@ bool FileSystem::formatSystem(const std::string &systemSize) {
     unsigned long remain = system_size;
     remain -= sizeof(SuperBlock);
     unsigned long clusterCount = 0, inodeCount = 0;
-//    unsigned long oneStepMemorySize = 1 + DATA_BLOCK_COUNT_DEF + 8 * sizeof(PsInode) + 8 * DATA_BLOCK_COUNT_DEF * BLOCK_SIZE;
     unsigned long bytesForInode = remain*0.002;
     unsigned long inodeData = 0;
     while (inodeData < bytesForInode){
         inodeData +=1 + (8 * sizeof(inodeCount));
         inodeCount += 8;
     }
-//    std::cout<< "InodeCount: " << inodeCount << std::endl;
+    std::cout<< "InodeCount: " << inodeCount << std::endl;
     remain -= inodeData;
 
     unsigned long clusterData = 0;
@@ -61,7 +60,7 @@ bool FileSystem::formatSystem(const std::string &systemSize) {
     clusterCount -= modDiff;
     clusterData -= (modDiff * BLOCK_SIZE);
     remain -= clusterData;
-//    std::cout<< "BlockCount: " << clusterCount << std::endl;
+    std::cout<< "BlockCount: " << clusterCount << std::endl;
 //    std::cout<< "Remain: " << remain << std::endl;
 
 
