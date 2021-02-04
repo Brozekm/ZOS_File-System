@@ -94,7 +94,7 @@ void Commands::commandController(const std::string& command) {
             if(comm.params.size() != 2){
                 std::cerr << "Usage: outcp <source-file> <target-file>" << std::endl;
             }else{
-                //TODO Call method
+                FileSystem::outcp(comm.params.at(0), comm.params.at(1));
             }
             break;
         case LOAD:
