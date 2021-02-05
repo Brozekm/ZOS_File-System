@@ -16,7 +16,6 @@
 
 #define BLOCK_SIZE 1024
 
-#define DATA_BLOCK_COUNT_DEF 5
 
 typedef struct SUPERBLOCK {
     char signature[9];              //login autora FS
@@ -36,8 +35,8 @@ typedef struct PSEUDO_INODE {
     bool isDirectory;               //soubor, nebo adresar
     unsigned int references;              //počet odkazů na i-uzel, používá se pro hardlinky
     unsigned long file_size;              //velikost souboru v bytech
-    unsigned long direct[5] = {0,0,0,0,0};                // 1. přímý odkaz na datové bloky
-    unsigned long inDirect[2] = {0,0};
+    unsigned int direct[5] = {0,0,0,0,0};                // 1. přímý odkaz na datové bloky
+    unsigned int inDirect[2] = {0,0};
 } PsInode;
 
 typedef struct DIRECTORY_ITEM {
@@ -48,7 +47,7 @@ typedef struct DIRECTORY_ITEM {
 
 class FileSystem{
 public:
-    static std::unique_ptr<PsInode> currentInode;
+    static PsInode currentInode;
     static std::string systemName;
 
     static bool formatSystem(const std::string& systemSize);
@@ -56,18 +55,40 @@ public:
     static bool isSystemRunning();
 
     static void incp(const std::string &file, const std::string &basicString);
+
+    static void outcp(const std::string &fsFile, const std::string &outFile);
+
+    static void mkdir(const std::string &extFile);
+
+
+    static bool cd(std::string path);
+
 private:
+    static std::string pwdPath;
     static std::string getDirectoriesFromPath(const std::string & path);
     static std::string getFileFromPath(const std::string & path);
     static std::unique_ptr<SuperBlock> superBlock;
     static std::fstream fileSystem;
     static unsigned long parseSize(const std::string &systemSize);
-    static std::vector<unsigned long> getFreeClusters(unsigned long clustersNeeded);
+    static std::vector<unsigned int> getFreeClusters(unsigned long clustersNeeded);
     static bool initSuperBlock(unsigned long i, unsigned long count, unsigned long count1);
 
 
-    static void createFile(PsInode *parent, std::string &fileName, const std::string& content, unsigned long size);
+    static void createFile(std::string &fileName, const std::string& content, unsigned long size);
 
-    static unsigned long getFreeInode();
+    static unsigned int getFreeInode();
+
+//    static bool getInodeBasedOnPath(PsInode *startInode, std::string path, PsInode *destination);
+//
+//    static void getInodeParent(PsInode *startInode, PsInode *destination);
+
+    static void reloadCurrentInode();
+
+
+    static std::string getFileContent(const PsInode &inode);
+
+    static unsigned int getFileBasedOnPath(const std::string &basicString);
+
+
 };
 #endif //ZOS_SEM_2020_FILESYSTEM_H

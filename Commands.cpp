@@ -38,7 +38,7 @@ void Commands::commandController(const std::string& command) {
             if(comm.params.size() != 1){
                 std::cerr << "Usage: mkdir <directory-name>" << std::endl;
             }else{
-                //TODO Call method
+                FileSystem::mkdir(comm.params.at(0));
             }
             break;
         case RMDIR:
@@ -66,7 +66,7 @@ void Commands::commandController(const std::string& command) {
             if(comm.params.size() != 1){
                 std::cerr << "Usage: cd <directory-name>" << std::endl;
             }else{
-                //TODO Call method
+                FileSystem::cd(comm.params.at(0));
             }
             break;
         case PWD:
