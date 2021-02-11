@@ -51,14 +51,16 @@ public:
     static std::string systemName;
 
     static bool formatSystem(const std::string& systemSize);
+
     static bool loadSystem();
+
     static bool isSystemRunning();
 
     static void incp(const std::string &file, const std::string &basicString);
 
     static void outcp(const std::string &fsFile, const std::string &outFile);
 
-    static void mkdir(const std::string &extFile);
+    static void mkdir(const std::string &path);
 
 
     static bool cd(std::string path);
@@ -69,11 +71,15 @@ public:
 
     static void ls(const std::string &path);
 
-    static void cp(const std::string &currentPath, const std::string &newFilePath);
+    static bool cp(const std::string &currentPath, const std::string &newFilePath);
 
     static void rm(const std::string &path);
 
     static void mv(const std::string &oldPath, const std::string &newPath);
+
+    static void info(const std::string &path);
+
+    static void rmdir(const std::string &path);
 
 private:
     static std::string pwdPath;

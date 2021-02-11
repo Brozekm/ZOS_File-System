@@ -12,12 +12,21 @@
 
 void Commands::commandController(const std::string& command) {
     SingleCommand comm = parseCommand(command);
+    if ((comm.val > 0) && (comm.val < 14)){
+        if (!FileSystem::isSystemRunning()){
+            std::cout << "FS is not running" << std::endl;
+            std::cerr << "Use: format <format-size>" << std::endl;
+            return;
+        }
+    }
     switch(comm.val){
         case COPY:
             if(comm.params.size() != 2){
                 std::cerr << "Usage: cp <source-file> <target-file>" << std::endl;
             }else{
-                FileSystem::cp(comm.params.at(0), comm.params.at(1));
+                if(FileSystem::cp(comm.params.at(0), comm.params.at(1))){
+                    std::cout << "OK" << std::endl;
+                }
             }
             break;
         case MOVE:
@@ -45,14 +54,16 @@ void Commands::commandController(const std::string& command) {
             if(comm.params.size() != 1){
                 std::cerr << "Usage: rmdir <directory-name>" << std::endl;
             }else{
-                //TODO Call method
+                FileSystem::rmdir(comm.params.at(0));
             }
             break;
         case LIST:
-            if(comm.params.size() != 1){
-                std::cerr << "Usage: ls <directory-name>" << std::endl;
-            }else{
+            if (comm.params.size() == 0){
+                FileSystem::ls(".");
+            }else if(comm.params.size() == 1){
                 FileSystem::ls(comm.params.at(0));
+            }else{
+                std::cerr << "Usage: ls <directory-name>" << std::endl;
             }
             break;
         case CAT:
@@ -81,7 +92,7 @@ void Commands::commandController(const std::string& command) {
             if(comm.params.size() != 1){
                 std::cerr << "Usage: info <directory-name/file-name>" << std::endl;
             }else{
-                //TODO Call method
+                FileSystem::info(comm.params.at(0));
             }
             break;
         case INCP:

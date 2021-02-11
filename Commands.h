@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-#define BAD_KEY 0
+
 #define COPY 1
 #define MOVE 2
 #define REMOVE 3
