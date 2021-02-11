@@ -63,12 +63,25 @@ public:
 
     static bool cd(std::string path);
 
+    static void pwd();
+
+    static void cat(const std::string &path);
+
+    static void ls(const std::string &path);
+
+    static void cp(const std::string &currentPath, const std::string &newFilePath);
+
+    static void rm(const std::string &path);
+
+    static void mv(const std::string &oldPath, const std::string &newPath);
+
 private:
     static std::string pwdPath;
     static std::string getDirectoriesFromPath(const std::string & path);
     static std::string getFileFromPath(const std::string & path);
     static std::unique_ptr<SuperBlock> superBlock;
     static std::fstream fileSystem;
+
     static unsigned long parseSize(const std::string &systemSize);
     static std::vector<unsigned int> getFreeClusters(unsigned long clustersNeeded);
     static bool initSuperBlock(unsigned long i, unsigned long count, unsigned long count1);
@@ -78,16 +91,15 @@ private:
 
     static unsigned int getFreeInode();
 
-//    static bool getInodeBasedOnPath(PsInode *startInode, std::string path, PsInode *destination);
-//
-//    static void getInodeParent(PsInode *startInode, PsInode *destination);
-
     static void reloadCurrentInode();
-
 
     static std::string getFileContent(const PsInode &inode);
 
-    static unsigned int getFileBasedOnPath(const std::string &basicString);
+    static void freeInode(unsigned long inodeIndex);
+
+    static void freeCluster(unsigned long clusterIndex);
+
+    static bool changeDirectory(std::string path);
 
 
 };

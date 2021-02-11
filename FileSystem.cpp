@@ -4,6 +4,7 @@
 
 #include <strings.h>
 #include <cstring>
+#include <utility>
 #include <vector>
 #include "FileSystem.h"
 
@@ -28,7 +29,7 @@ bool FileSystem::formatSystem(const std::string &systemSize) {
     std::ofstream outputStream(systemName.c_str(), std::ios::out|std::ios::binary);
 
     if(!outputStream.is_open()){
-        std::cout << "Error occurred while creating output stream" << std::endl;
+        std::cout << "CANNOT CREATE FILE" << std::endl;
         return false;
     }
 
@@ -41,7 +42,7 @@ bool FileSystem::formatSystem(const std::string &systemSize) {
         inodeData +=1 + (8 * sizeof(inodeCount));
         inodeCount += 8;
     }
-    std::cout<< "InodeCount: " << inodeCount << std::endl;
+//    std::cout<< "InodeCount: " << inodeCount << std::endl;
     remain -= inodeData;
 
     unsigned long clusterData = 0;
@@ -61,11 +62,11 @@ bool FileSystem::formatSystem(const std::string &systemSize) {
     clusterCount -= modDiff;
     clusterData -= (modDiff * BLOCK_SIZE);
     remain -= clusterData;
-    std::cout<< "BlockCount: " << clusterCount << std::endl;
+//    std::cout<< "BlockCount: " << clusterCount << std::endl;
 
 
     if(!initSuperBlock(system_size-remain,inodeCount, clusterCount)){
-        std::cout << "Error occurred while initializing Super block" << std::endl;
+        std::cout << "CANNOT CREATE FILE" << std::endl;
         return false;
     }
 
@@ -79,7 +80,7 @@ bool FileSystem::formatSystem(const std::string &systemSize) {
     }
 
     outputStream.put(0x80);
-    for (int i = 0; i < clusterCount/8; ++i) {
+    for (int i = 1; i < clusterCount/8; ++i) {
         outputStream.put(0x00);
     }
 
@@ -89,22 +90,27 @@ bool FileSystem::formatSystem(const std::string &systemSize) {
     currentInode.nodeid = 0;
     currentInode.file_size = sizeof(DirectoryItem) * 2;
     outputStream.write((char*) &currentInode, sizeof(PsInode));
+
     currentInode.isDirectory = false;
     currentInode.file_size = 0;
     for (int i = 1; i < inodeCount; i++) {
-        currentInode.nodeid = i;
         outputStream.write((char *) &currentInode, sizeof(PsInode));
     }
 
-    auto* tmpDir = new DirectoryItem {0, '.'};
-    outputStream.write((char*) tmpDir, sizeof(DirectoryItem));
-    std::string parrentIndex = "..";
-    auto* tmpParent = new DirectoryItem {0, *parrentIndex.c_str()};
-    outputStream.write((char*) tmpParent, sizeof(DirectoryItem));
+
+    auto tmpDir = DirectoryItem {};
+    tmpDir.inode = 0;
+    strcpy(tmpDir.item_name, ".");
+    outputStream.write((char*) &tmpDir, sizeof(DirectoryItem));
+    auto tmpParent =DirectoryItem {};
+    tmpParent.inode = 0;
+    std::string parentPath = "..";
+    strcpy(tmpParent.item_name, parentPath.c_str());
+    outputStream.write((char*) &tmpParent, sizeof(DirectoryItem));
     for (int i = 0; i < (BLOCK_SIZE - sizeof(DirectoryItem)*2); ++i) {
         outputStream.put(0x00);
     }
-    delete tmpDir, tmpParent;
+
 
     for (int i = 0; i < (clusterCount-1)*BLOCK_SIZE; i++) {
         outputStream.put(0x00);
@@ -116,7 +122,7 @@ bool FileSystem::formatSystem(const std::string &systemSize) {
     fileSystem.seekg(superBlock->inode_start_address, std::ios::beg);
     fileSystem.read((char *) &currentInode, sizeof(PsInode));
     pwdPath = "/";
-    std::cout << "FS formatted correctly" << std::endl;
+    std::cout << "OK" << std::endl;
     return true;
 }
 
@@ -137,35 +143,32 @@ bool FileSystem::loadSystem() {
 }
 
 void FileSystem::outcp(const std::string & fsFile,const std::string &outFile) {
-    //TODO check if fsFile exists in file system
     std::string fileName = getFileFromPath(fsFile);
     std::string filePath = getDirectoriesFromPath(fsFile);
+
+    PsInode currentHolder = currentInode;
+    if(!changeDirectory(filePath)){
+        std::cout << "FILE NOT FOUND" << std::endl;
+        return;
+    }
+    unsigned int index = 0;
+    for (int i = 0; i < BLOCK_SIZE; i+=sizeof(DirectoryItem)) {
+        auto dirItem = DirectoryItem {};
+        fileSystem.seekg(superBlock->data_start_address + currentInode.direct[0] * BLOCK_SIZE + i, std::ios::beg);
+        fileSystem.read((char *) &dirItem, sizeof(DirectoryItem));
+        if (dirItem.item_name == fileName){
+            index = dirItem.inode;
+            break;
+        }
+    }
+    if (index == 0 ){
+        std::cout<< "FILE NOT FOUND" << std::endl;
+        return;
+    }
+
     std::ofstream outputStream;
     outputStream.open(outFile, std::ios::out|std::ios::binary);
     if (outputStream.is_open()){
-//        auto fileIndex = getFileBasedOnPath(fsFile);
-        PsInode currentHolder = currentInode;
-        if (!filePath.empty()){
-            if(!cd(filePath)){
-                return;
-            }
-        }
-        unsigned int index = 0;
-        for (int i = 0; i < BLOCK_SIZE; i+=sizeof(DirectoryItem)) {
-            auto dirItem = DirectoryItem {};
-            fileSystem.seekg(superBlock->data_start_address + currentInode.nodeid * sizeof(PsInode), std::ios::beg);
-            fileSystem.read((char *) &dirItem, sizeof(DirectoryItem));
-            if (dirItem.item_name == fileName){
-                index = dirItem.inode;
-            }
-        }
-        if (index == 0 ){
-            std::cout<< "FILE NOT FOUND" << std::endl;
-            return;
-        }
-
-
-
         auto fileInFs = PsInode {};
         fileSystem.seekg(superBlock->inode_start_address + index * sizeof(PsInode), std::ios::beg);
         fileSystem.read((char *) &fileInFs, sizeof(PsInode));
@@ -176,9 +179,10 @@ void FileSystem::outcp(const std::string & fsFile,const std::string &outFile) {
         outputStream.flush();
         outputStream.close();
         currentInode = currentHolder;
-    std::cout << "File '"<< fsFile <<"' extracted from FS successfully" << std::endl;
+        std::cout << "OK" << std::endl;
     }else{
-        std::cout << "Cannot open file '"<< outFile << "' outside of FS" << std::endl;
+        currentInode = currentHolder;
+        std::cout << "PATH NOT FOUND" << std::endl;
     }
 }
 
@@ -204,74 +208,240 @@ void FileSystem::mkdir(const std::string & fileWithPath) {
 
 
 bool FileSystem::cd(std::string path) {
-    if (path.empty()){
-        return true;
-    }
-    bool isAbsolute = path.at(0)=='/';
+   if (changeDirectory(std::move(path))){
+       std::cout << "OK" << std::endl;
+   } else{
+       std::cout << "PATH NOT FOUND" << std::endl;
+   }
+}
 
-    std::vector<std::string> tokens;
-    size_t index;
-    while((index = path.find('/')) != std::string::npos){
-        tokens.push_back(path.substr(0, index));
-        path.erase(0,index+1);
+void FileSystem::mv(const std::string &oldPath, const std::string &newPath) {
+    cp(oldPath, newPath);
+    rm(oldPath);
+}
+
+void FileSystem::ls(const std::string &path) {
+    std::string file, dir;
+    file = getFileFromPath(path);
+    dir = getDirectoriesFromPath(path);
+
+    auto currentHolder = PsInode {};
+    currentHolder = currentInode;
+
+    if (!changeDirectory(dir)){
+        std::cout << "PATH NOT FOUND" << std::endl;
+        return;
     }
-    auto inode = PsInode {};
-    if (isAbsolute){
-        fileSystem.seekg(superBlock->inode_start_address, std::ios::beg);
-        fileSystem.read((char *) &inode, sizeof(PsInode));
-    }else {
-        inode = currentInode;
+    long index = -1;
+    for (int i = 0; i < BLOCK_SIZE; i+=sizeof(DirectoryItem)) {
+        auto dirItem = DirectoryItem {};
+        fileSystem.seekg(superBlock->data_start_address + currentInode.direct[0] * BLOCK_SIZE + i, std::ios::beg);
+        fileSystem.read((char *) &dirItem, sizeof(DirectoryItem));
+        if (file == dirItem.item_name){
+            index = dirItem.inode;
+            break;
+        }
     }
-    bool tokenFound;
-    for(auto &token : tokens){
-        tokenFound = false;
-        for (unsigned int i = 0; i < BLOCK_SIZE; i+= sizeof(DirectoryItem)) {
-            auto dirItem = DirectoryItem {};
-            fileSystem.seekg(superBlock->data_start_address + inode.direct[0] * BLOCK_SIZE + i);
-            fileSystem.read((char *)& dirItem, sizeof(DirectoryItem));
-            if (dirItem.item_name == token){
-                fileSystem.seekg(superBlock->inode_start_address + dirItem.inode * sizeof(PsInode), std::ios::beg);
-                fileSystem.read((char *) &inode, sizeof(PsInode));
-                tokenFound = true;
-                if (!inode.isDirectory){
-                    std::cout << "Path is not valid" << std::endl;
-                    return false;
+    if (index == -1 ){
+        std::cout<< "PATH NOT FOUND" << std::endl;
+        return;
+    }
+    auto fileInFs = PsInode {};
+    fileSystem.seekg(superBlock->inode_start_address + index * sizeof(PsInode), std::ios::beg);
+    fileSystem.read((char *) &fileInFs, sizeof(PsInode));
+    if (fileInFs.isDirectory){
+        for (unsigned int i = 2 * sizeof(DirectoryItem); i < BLOCK_SIZE; i+= sizeof(DirectoryItem)) {
+            auto tmpDirItem = DirectoryItem {};
+            fileSystem.seekg(superBlock->data_start_address + fileInFs.direct[0] * BLOCK_SIZE + i, std::ios::beg);
+            fileSystem.read((char *) & tmpDirItem, sizeof(DirectoryItem));
+            if (tmpDirItem.item_name[0] != 0){
+                auto tmpInode = PsInode {};
+                fileSystem.seekg(superBlock->inode_start_address + tmpDirItem.inode*sizeof(PsInode), std::ios::beg);
+                fileSystem.read((char *) & tmpInode, sizeof(PsInode));
+                if (tmpInode.isDirectory){
+                    std::cout << "+" << tmpDirItem.item_name << std::endl;
+                }else{
+                    std::cout << "-" << tmpDirItem.item_name << std::endl;
                 }
-                break;
             }
         }
-        if (!tokenFound){
-            std::cout << "PATH NOT FOUND" << std::endl;
-            return false;
-        }
-    }
-    if(isAbsolute){
-        std::string newPath;
-        newPath += "/";
-        for (auto & token: tokens) {
-            newPath += token;
-            newPath += "/";
-        }
-        pwdPath = newPath;
+
     }else{
-        for (auto & token: tokens) {
-            if (token == "."){
-                continue;
-            }else if (token == ".."){
-                pwdPath.erase(pwdPath.at(pwdPath.size()-1));
-                size_t tmpIndex = pwdPath.find_last_of('/');
-                pwdPath = pwdPath.substr(0,tmpIndex+1);
-            } else{
-                pwdPath += token;
-                pwdPath += "/";
-            }
+        std::cout << "PATH NOT FOUND" << std::endl;
+    }
+    currentInode = currentHolder;
+}
 
+void FileSystem::pwd() {
+    std::cout << pwdPath << std::endl;
+}
+
+void FileSystem::cat(const std::string &path) {
+    std::string file, dir;
+    file = getFileFromPath(path);
+    dir = getDirectoriesFromPath(path);
+
+    auto currentHolder = PsInode {};
+    currentHolder = currentInode;
+
+    if (!changeDirectory(dir)){
+        std::cout << "FILE NOT FOUND" << std::endl;
+    }
+    unsigned int index = 0;
+    for (int i = 0; i < BLOCK_SIZE; i+=sizeof(DirectoryItem)) {
+        auto dirItem = DirectoryItem {};
+        fileSystem.seekg(superBlock->data_start_address + currentInode.direct[0] * BLOCK_SIZE + i, std::ios::beg);
+        fileSystem.read((char *) &dirItem, sizeof(DirectoryItem));
+        if (dirItem.item_name == file){
+            index = dirItem.inode;
+            break;
+        }
+    }
+    if (index == 0 ){
+        std::cout<< "FILE NOT FOUND" << std::endl;
+        return;
+    }
+
+    auto fileInFs = PsInode {};
+    fileSystem.seekg(superBlock->inode_start_address + index * sizeof(PsInode), std::ios::beg);
+    fileSystem.read((char *) &fileInFs, sizeof(PsInode));
+
+    std::string content = getFileContent(fileInFs);
+
+    std::cout << content << std::endl;
+    currentInode = currentHolder;
+}
+
+void FileSystem::rm(const std::string &path) {
+    std::string file, dir;
+    file = getFileFromPath(path);
+    dir = getDirectoriesFromPath(path);
+
+    auto currentHolder = PsInode {};
+    currentHolder = currentInode;
+
+    if(!changeDirectory(dir)){
+        std::cout << "FILE NOT FOUND" << std::endl;
+        return;
+    }
+    long index = -1;
+    for (int i = 0; i < BLOCK_SIZE; i+=sizeof(DirectoryItem)) {
+        auto dirItem = DirectoryItem {};
+        fileSystem.seekg(superBlock->data_start_address + currentInode.direct[0] * BLOCK_SIZE + i, std::ios::beg);
+        fileSystem.read((char *) &dirItem, sizeof(DirectoryItem));
+        if (file == dirItem.item_name){
+            index = dirItem.inode;
+            break;
+        }
+    }
+    if (index == -1 ){
+        std::cout<< "FILE NOT FOUND" << std::endl;
+        return;
+    }
+    auto fileInFs = PsInode {};
+    fileSystem.seekg(superBlock->inode_start_address + index * sizeof(PsInode), std::ios::beg);
+    fileSystem.read((char *) &fileInFs, sizeof(PsInode));
+
+    if (fileInFs.isDirectory){
+        std::cout<< "FILE NOT FOUND" << std::endl;
+        return;
+    }
+
+    for (unsigned int direct : fileInFs.direct){
+        if (direct != 0){
+            freeCluster(direct);
+        }
+    }
+    for (unsigned int indirect : fileInFs.inDirect) {
+        if (indirect != 0){
+            for (int i = 0; i < BLOCK_SIZE; i+=sizeof(unsigned int)) {
+                unsigned int index;
+                fileSystem.seekg(superBlock->data_start_address + indirect * BLOCK_SIZE + i, std::ios::beg);
+                fileSystem.read(reinterpret_cast<char *>(&index), sizeof(index));
+
+                if (index == 0){
+                    break;
+                }
+                freeCluster(index);
+            }
+        }
+    }
+    freeInode(fileInFs.nodeid);
+
+    for (int i = 2*sizeof(DirectoryItem); i < BLOCK_SIZE; i+= sizeof(DirectoryItem)) {
+        auto dirItem = DirectoryItem {};
+        fileSystem.seekg(superBlock->data_start_address + currentInode.direct[0] * BLOCK_SIZE + i, std::ios::beg);
+        fileSystem.read((char *)& dirItem, sizeof(DirectoryItem));
+        if (file == dirItem.item_name){
+            auto emptyDir = DirectoryItem {};
+            fileSystem.seekp(superBlock->data_start_address + currentInode.direct[0] * BLOCK_SIZE + i, std::ios::beg);
+            fileSystem.write((char *)&emptyDir, sizeof(DirectoryItem));
+            break;
+        }
+
+    }
+
+    std::cout << "OK" << std::endl;
+    currentInode = currentHolder;
+}
+
+void FileSystem::cp(const std::string &currentPath, const std::string &newFilePath) {
+    std::string oldFile, oldDir, newFile, newDir;
+    oldFile = getFileFromPath(currentPath);
+    oldDir = getDirectoriesFromPath(currentPath);
+    newFile = getFileFromPath(newFilePath);
+    newDir = getDirectoriesFromPath(newFilePath);
+
+    auto currentHolder = PsInode {};
+    currentHolder = currentInode;
+
+    if(!changeDirectory(oldDir)){
+        std::cout << "FILE NOT FOUND" << std::endl;
+        return;
+    }
+    long index = -1;
+    for (int i = 0; i < BLOCK_SIZE; i+=sizeof(DirectoryItem)) {
+        auto dirItem = DirectoryItem {};
+        fileSystem.seekg(superBlock->data_start_address + currentInode.direct[0] * BLOCK_SIZE + i, std::ios::beg);
+        fileSystem.read((char *) &dirItem, sizeof(DirectoryItem));
+        if (oldFile == dirItem.item_name){
+            index = dirItem.inode;
+            break;
+        }
+    }
+    if (index == -1 ){
+        std::cout<< "FILE NOT FOUND" << std::endl;
+        return;
+    }
+    auto fileInFs = PsInode {};
+    fileSystem.seekg(superBlock->inode_start_address + index * sizeof(PsInode), std::ios::beg);
+    fileSystem.read((char *) &fileInFs, sizeof(PsInode));
+    if (fileInFs.isDirectory){
+        std::cout<< "FILE NOT FOUND" << std::endl;
+        return;
+    }
+    std::string content = getFileContent(fileInFs);
+
+    currentInode = currentHolder;
+    currentHolder = currentInode;
+
+    if(!changeDirectory(newDir)){
+        std::cout << "FILE NOT FOUND" << std::endl;
+        return;
+    }
+    for (int i = 0; i < BLOCK_SIZE; i+=sizeof(DirectoryItem)) {
+        auto dirItem = DirectoryItem {};
+        fileSystem.seekg(superBlock->data_start_address + currentInode.direct[0] * BLOCK_SIZE + i, std::ios::beg);
+        fileSystem.read((char *) &dirItem, sizeof(DirectoryItem));
+        if (newFile == dirItem.item_name){
+            std::cout << "EXISTS" << std::endl;
+            return;
         }
     }
 
-    currentInode = inode;
+    createFile(newFile, content, fileInFs.file_size);
     std::cout << "OK" << std::endl;
-    return true;
+    currentInode = currentHolder;
 }
 
 void FileSystem::incp(const std::string & extFile,const std::string &inpFile) {
@@ -285,15 +455,16 @@ void FileSystem::incp(const std::string & extFile,const std::string &inpFile) {
 
         auto oldInode = PsInode {};
         oldInode = currentInode;
-        if(!cd(dir)){
+        if(!changeDirectory(dir)){
+            std::cout << "PATH NOT FOUND" << std::endl;
             return;
         }
         for (int i = 0; i < BLOCK_SIZE; i+=sizeof(DirectoryItem)) {
             auto dirItem = DirectoryItem {};
-            fileSystem.seekg(superBlock->data_start_address + currentInode.nodeid * sizeof(PsInode), std::ios::beg);
+            fileSystem.seekg(superBlock->data_start_address + currentInode.direct[0] * BLOCK_SIZE, std::ios::beg);
             fileSystem.read((char *) &dirItem, sizeof(DirectoryItem));
             if (dirItem.item_name == file){
-                std::cout << "Name of the file is already used" << std::endl;
+                std::cout << "EXISTS" << std::endl;
                 return;
             }
         }
@@ -302,8 +473,6 @@ void FileSystem::incp(const std::string & extFile,const std::string &inpFile) {
         unsigned long fileSize = inputStream.tellg();
         inputStream.seekg(0, std::ios::beg);
 
-
-        /** */
         char content[fileSize];
         inputStream.read((char*)content, fileSize);
         inputStream.close();
@@ -314,9 +483,9 @@ void FileSystem::incp(const std::string & extFile,const std::string &inpFile) {
         createFile(file, strContent,fileSize);
         currentInode = oldInode;
         reloadCurrentInode();
-
+        std::cout << "OK" << std::endl;
     }else{
-        std::cout<< "File not found or it cannot be opened" << std::endl;
+        std::cout<< "FILE NOT FOUND" << std::endl;
     }
 }
 
@@ -341,12 +510,11 @@ unsigned long FileSystem::parseSize(const std::string &systemSize) {
         std::cout << "FS maximum size is 2GB" << std::endl;
         std::cout << "Please enter size smaller then 2GB" << std::endl;
         return 0;
-    }else if((size*multiply)< (KILOBYTE*41)) {
-        std::cout << "FS minimum size is 41 KB" << std::endl;
+    }else if((size*multiply)< (KILOBYTE*50)) {
+        std::cout << "FS minimum size is 50 KB" << std::endl;
         return 0;
     }
 
-    std::cout << "FS size: " << size<< unit << std::endl;
     size = size * multiply * 1024;
     return size;
 }
@@ -397,8 +565,9 @@ void FileSystem::createFile(std::string &fileName, const std::string& content, u
     unsigned long clustersNeeded = (size/(BLOCK_SIZE))+1;
     unsigned int indirectNeeded = 0;
     unsigned long numberOfAddInIndirect = superBlock->cluster_size / sizeof(unsigned int);
-    std::cout << "Number of add in indirect " << numberOfAddInIndirect << std::endl;
-    if (clustersNeeded > 5 && clustersNeeded < numberOfAddInIndirect+5){
+
+    if (clustersNeeded <= 5 ){
+    }else if (clustersNeeded > 5 && clustersNeeded < numberOfAddInIndirect+5){
         indirectNeeded++;
         clustersNeeded++;
     }else if ((clustersNeeded > numberOfAddInIndirect+5) && (clustersNeeded < numberOfAddInIndirect * 2 + 5)){
@@ -412,8 +581,7 @@ void FileSystem::createFile(std::string &fileName, const std::string& content, u
 
     auto freePsInodeAddr = getFreeInode();
     std::vector<unsigned int> freeClusterAddr = getFreeClusters(clustersNeeded);
-    std::cout << "Free Inode address " << freePsInodeAddr << std::endl;
-    std::cout << "Clusters needed " << clustersNeeded << std::endl;
+
 
     std::vector<std::string> contentForClusters;
     for (size_t index = 0; index < content.length(); index += superBlock->cluster_size) {
@@ -462,6 +630,7 @@ void FileSystem::createFile(std::string &fileName, const std::string& content, u
             fileSystem.write(reinterpret_cast<const char *>(&freeClusterAddr.at(clusterIndex)), sizeof(freeClusterAddr.at(clusterIndex)));
             fileSystem.flush();
         }
+
     } else{
         std::cerr << "Error occurred while filling file with data" << std::endl;
         return;
@@ -474,22 +643,100 @@ void FileSystem::createFile(std::string &fileName, const std::string& content, u
     newDir.inode = newInode.nodeid;
     strcpy(newDir.item_name, fileName.c_str());
     fileSystem.seekg(superBlock->data_start_address + currentInode.direct[0] * BLOCK_SIZE + currentInode.references * sizeof(DirectoryItem), std::ios::beg);
-    fileSystem.write((char *) &newDir, sizeof(newDir));
-    fileSystem.flush();
-    currentInode.references += 1;
-    fileSystem.seekg(superBlock->inode_start_address + currentInode.nodeid * sizeof(PsInode), std::ios::beg);
+
+    for(long i = 2*sizeof(DirectoryItem); i<BLOCK_SIZE ; i+= sizeof(DirectoryItem) ){
+        auto tmpDir = DirectoryItem {};
+        fileSystem.seekg(superBlock->data_start_address + currentInode.direct[0] * BLOCK_SIZE + i, std::ios::beg);
+        fileSystem.read((char *) & tmpDir, sizeof(DirectoryItem));
+        if (tmpDir.item_name[0] == 0){
+            fileSystem.seekp(superBlock->data_start_address + currentInode.direct[0] * BLOCK_SIZE + i, std::ios::beg);
+            fileSystem.write((char *) &newDir, sizeof(newDir));
+            fileSystem.flush();
+            break;
+        }
+
+    }
+
+
+    currentInode.file_size += sizeof(DirectoryItem);
+    fileSystem.seekp(superBlock->inode_start_address + currentInode.nodeid * sizeof(PsInode), std::ios::beg);
     fileSystem.write((char *) &currentInode, sizeof(PsInode));
     fileSystem.flush();
-
-    std::cout << "File created successfully" << std::endl;
 }
 
+bool FileSystem::changeDirectory(std::string path){
+    if (path.empty()){
+        return true;
+    }
+    bool isAbsolute = path.at(0)=='/';
+
+    std::vector<std::string> tokens;
+    size_t index;
+    while((index = path.find('/')) != std::string::npos){
+        tokens.push_back(path.substr(0, index));
+        path.erase(0,index+1);
+    }
+    auto inode = PsInode {};
+    if (isAbsolute){
+        fileSystem.seekg(superBlock->inode_start_address, std::ios::beg);
+        fileSystem.read((char *) &inode, sizeof(PsInode));
+    }else {
+        inode = currentInode;
+    }
+    bool tokenFound;
+    for(auto &token : tokens){
+        tokenFound = false;
+        for (unsigned int i = 0; i < BLOCK_SIZE; i+= sizeof(DirectoryItem)) {
+            auto dirItem = DirectoryItem {};
+            fileSystem.seekg(superBlock->data_start_address + inode.direct[0] * BLOCK_SIZE + i);
+            fileSystem.read((char *)& dirItem, sizeof(DirectoryItem));
+            if (dirItem.item_name == token){
+                fileSystem.seekg(superBlock->inode_start_address + dirItem.inode * sizeof(PsInode), std::ios::beg);
+                fileSystem.read((char *) &inode, sizeof(PsInode));
+                tokenFound = true;
+                if (!inode.isDirectory){
+                    return false;
+                }
+                break;
+            }
+        }
+        if (!tokenFound){
+            return false;
+        }
+    }
+    if(isAbsolute){
+        std::string newPath;
+        newPath += "/";
+        for (auto & token: tokens) {
+            newPath += token;
+            newPath += "/";
+        }
+        pwdPath = newPath;
+    }else{
+        for (auto & token: tokens) {
+            if (token == "."){
+                continue;
+            }else if (token == ".."){
+                pwdPath.erase(pwdPath.at(pwdPath.size()-1));
+                size_t tmpIndex = pwdPath.find_last_of('/');
+                pwdPath = pwdPath.substr(0,tmpIndex+1);
+            } else{
+                pwdPath += token;
+                pwdPath += "/";
+            }
+
+        }
+    }
+
+    currentInode = inode;
+    return true;
+}
 unsigned int FileSystem::getFreeInode() {
     unsigned char currentByte;
     fileSystem.seekg(superBlock->bitmapi_start_address, std::ios::beg);
-    for (unsigned long ixByte= 0; ixByte < superBlock->inode_count/8 ; ixByte++) {
+    for (unsigned int ixByte= 0; ixByte < superBlock->inode_count/8 ; ixByte++) {
         currentByte = fileSystem.get();
-        for (unsigned long ixBit = 7; ixBit>=0 ; ixBit--) {
+        for (int ixBit = 7; ixBit>=0 ; ixBit--) {
             if(!((currentByte >> ixBit) & 1U)){
                 fileSystem.seekg(-1, std::ios::cur);
                 currentByte |= 1UL << ixBit;
@@ -506,25 +753,52 @@ std::vector<unsigned int>FileSystem::getFreeClusters(unsigned long clustersNeede
     unsigned char currentByte;
     std::vector<unsigned int> addresses;
     fileSystem.seekg(superBlock->bitmap_start_address, std::ios::beg);
-    for (unsigned long ixByte = 0; ixByte < superBlock->cluster_count/8; ixByte++) {
+    for (unsigned int ixByte = 0; ixByte < superBlock->cluster_count/8; ixByte++) {
         currentByte = fileSystem.get();
-        for (unsigned long ixBit = 7; ixBit >= 0 ; ixBit--) {
-            if (!((currentByte >> ixBit)& 1U)){
+        for (int ixBit = 7; ixBit >= 0 ; ixBit--) {
+            if (!((currentByte >> ixBit) & 1U)){
                 fileSystem.seekg(-1, std::ios::cur);
                 currentByte |= 1UL << ixBit;
                 fileSystem.put(currentByte);
                 fileSystem.flush();
                 addresses.push_back((ixByte * 8) + (7-ixBit));
                 if (addresses.size() == clustersNeeded){
-                    goto endOfLoops;
+                    return addresses;
                 }
             }
         }
     }
-    endOfLoops:
+
     return addresses;
 }
 
+void FileSystem::freeInode(unsigned long inodeIndex) {
+    unsigned long byteIndex = (inodeIndex / 8);
+    // bit orders are reversed
+    unsigned int bitIndex = 7 - (inodeIndex - (byteIndex * 8));
+    unsigned char bmp;
+
+    fileSystem.seekg(superBlock->bitmapi_start_address + byteIndex, std::ios::beg);
+    fileSystem >> bmp;
+    // inserts 1 on desired bit
+    bmp &= ~(1LU << bitIndex);
+    fileSystem.seekg(-1, std::ios::cur);
+    fileSystem << bmp;
+}
+
+void FileSystem::freeCluster(unsigned long clusterIndex) {
+    unsigned long byteIndex = (clusterIndex / 8);
+    // bit shifting is reversed
+    unsigned int bitIndex = 7 - (clusterIndex - (byteIndex * 8));
+    unsigned char bmp;
+
+    fileSystem.seekg(superBlock->bitmap_start_address + byteIndex, std::ios::beg);
+    fileSystem >> bmp;
+    // inserts 1 on desired bit
+    bmp &= ~(1LU << bitIndex);
+    fileSystem.seekg(-1, std::ios::cur);
+    fileSystem << bmp;
+}
 
 
 void FileSystem::reloadCurrentInode() {
@@ -570,113 +844,21 @@ std::string FileSystem::getFileContent(const PsInode &fileInFS){
             }
         }
     }
+    std::cout << content << std::endl;
     return content;
 }
 
-unsigned int FileSystem::getFileBasedOnPath(const std::string &filePath) {
-    //TODO THIS METHOD CURRENTLY LOOKS FOR FILE ONLY IN ROOT -> change to find it on path
-    std::string fileName = getFileFromPath(filePath);
-    std::string path = getDirectoriesFromPath(filePath);
-    auto root = PsInode{};
-    fileSystem.seekg(superBlock->inode_start_address, std::ios::beg);
-    fileSystem.read((char * )&root, sizeof(PsInode));
-    for (int i = 0; i < BLOCK_SIZE; i+= sizeof(DirectoryItem)) {
-        auto tmpDir = DirectoryItem {};
-        fileSystem.seekg(superBlock->data_start_address + i * sizeof(DirectoryItem), std::ios::beg);
-        fileSystem.read((char *)&tmpDir, sizeof(DirectoryItem));
-        if (tmpDir.item_name == fileName){
-            std::cout << tmpDir.item_name << " ,index: " << tmpDir.inode << std::endl;
-            return tmpDir.inode;
-        }
-    }
-    std::cout<< "File was not found in root" << std::endl;
-    return 0;
-}
 
 
 
 
 
 
-//bool FileSystem::getInodeBasedOnDir(PsInode *directory, const std::string& inodeName, PsInode *destination) {
-//    auto item = std::make_unique<DirectoryItem>();
-//    unsigned int maxBlock = directory->references / MAX_DIRECTORY_ITEMS_FOR_DATA_BLOCK;
-//    unsigned int itemsPassed = 2;
-//
-//    unsigned int startingItemId = 2;
-//    unsigned long blockAddress;
-//    if (inodeName == ".."){
-//        //is parent
-//        fileSystem.seekg(superBlock->data_start_address + directory->direct[0] * superBlock->cluster_size);
-//        fileSystem.read((char*)(item.get()), sizeof(DirectoryItem));
-//        getInode(item->inode, destination);
-//        return true;
-//    }else if (inodeName == "."){
-//        //is self reference
-//        memcpy(reinterpret_cast<char*>(destination), reinterpret_cast<char*>(directory), sizeof(Inode));
-//        return true;
-//    }
-//
-//    for(int blockId = 0; blockId < maxBlock + 1; blockId++){
-//        blockAddress = getXthInodeBlock(directory, blockId);
-//        fileSystem.seekg(system->data_start_address + blockAddress * DEFAULT_BLOCK_SIZE + startingItemId * sizeof(DirectoryItem));
-//        for(unsigned int i = startingItemId; i < MAX_DIRECTORY_ITEMS_FOR_DATA_BLOCK and
-//                                             itemsPassed <= directory->references; i++, itemsPassed++){
-//            //iterate though all directory items
-//            fileSystem.read((char*)(item.get()), sizeof(DirectoryItem));
-//            if(strcmp(item->item_name, inodeName.c_str()) == 0){
-//                getInode(item->inode, destination);
-//                return true;
-//            }
-//        }
-//        startingItemId = 0;
-//    }
-//    std::cout << "Inode " << inodeName << " was not found" << std::endl;
-//    return false;
-//}
-//bool FileSystem::getInodeBasedOnPath(PsInode *startInode, std::string path, PsInode *destination) {
-//    auto parentInode = std::make_unique<PsInode>();
-//    if (path.empty()){
-//        memcpy(reinterpret_cast<char*>(destination), reinterpret_cast<char*>(startInode), sizeof(PsInode));
-//        return true;
-//    }else if (path[0] == '/'){
-//        //path starts from root
-//        fileSystem.seekg(superBlock->inode_start_address, std::ios::beg);
-//        fileSystem.read(reinterpret_cast<char*>(parentInode.get()), sizeof(PsInode));
-//        path = path.erase(0, 1);
-//    }else if (path.find("..") == 0){
-//        //parent reference
-//        getInodeParent(startInode, parentInode.get());
-//        path = path.erase(0, 3);
-//    }else if (path[0] == '.'){
-//        //self reference
-//        memcpy(reinterpret_cast<char*>(parentInode.get()), reinterpret_cast<char*>(startInode), sizeof(PsInode));
-//        path = path.erase(0, 2);
-//    }else{
-//        memcpy(reinterpret_cast<char*>(parentInode.get()), reinterpret_cast<char*>(startInode), sizeof(PsInode));
-//    }
-//    if (path.empty()){
-//        memcpy(reinterpret_cast<char*>(destination), reinterpret_cast<char*>(parentInode.get()), sizeof(PsInode));
-//        return true;
-//    }
-////    auto index = path.find_first_of('/');
-////    std::string directoryName = path.substr(0, index);
-////    if(!getInodeBasedOnDir(parentInode.get(), directoryName, destination)){
-////        std::cout << "Directory does not exists " << path << std::endl;
-////        return false;
-////    }
-////    memcpy(reinterpret_cast<char*>(parentInode.get()), reinterpret_cast<char*>(destination), sizeof(PsInode));
-////    path.erase(0, index);
-////    return getInodeOnPath(parentInode.get(), path, destination);
-//}
-//
-//void FileSystem::getInodeParent(PsInode *startInode, PsInode *destination) {
-//    auto item = std::make_unique<DirectoryItem>();
-//    fileSystem.seekg(superBlock->data_start_address + startInode->direct[0] * superBlock->cluster_size, std::ios::beg);
-//    fileSystem.read(reinterpret_cast<char*>(item.get()), sizeof(DirectoryItem));
-//
-//    //directory parent reference
-//    fileSystem.seekg(superBlock->inode_start_address + item->inode * sizeof(PsInode), std::ios::beg);
-//    fileSystem.read(reinterpret_cast<char*>(destination), sizeof(PsInode));
-//}
+
+
+
+
+
+
+
 
