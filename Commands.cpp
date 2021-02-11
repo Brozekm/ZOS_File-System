@@ -12,17 +12,17 @@
 
 void Commands::commandController(const std::string& command) {
     SingleCommand comm = parseCommand(command);
-    if ((comm.val > 0) && (comm.val < 14)){
+    if ((comm.val != 0) && (comm.val != 14)){
         if (!FileSystem::isSystemRunning()){
             std::cout << "FS is not running" << std::endl;
-            std::cerr << "Use: format <format-size>" << std::endl;
+            std::cout << "Use: format <format-size>" << std::endl;
             return;
         }
     }
     switch(comm.val){
         case COPY:
             if(comm.params.size() != 2){
-                std::cerr << "Usage: cp <source-file> <target-file>" << std::endl;
+                std::cout << "Usage: cp <source-file> <target-file>" << std::endl;
             }else{
                 if(FileSystem::cp(comm.params.at(0), comm.params.at(1))){
                     std::cout << "OK" << std::endl;
@@ -31,28 +31,28 @@ void Commands::commandController(const std::string& command) {
             break;
         case MOVE:
             if(comm.params.size() != 2){
-                std::cerr << "Usage: mv <source-file> <target-file>" << std::endl;
+                std::cout << "Usage: mv <source-file> <target-file>" << std::endl;
             }else{
                 FileSystem::mv(comm.params.at(0), comm.params.at(1));
             }
             break;
         case REMOVE:
             if(comm.params.size() != 1){
-                std::cerr << "Usage: rm <file-name>" << std::endl;
+                std::cout << "Usage: rm <file-name>" << std::endl;
             }else{
                 FileSystem::rm(comm.params.at(0));
             }
             break;
         case MKDIR:
             if(comm.params.size() != 1){
-                std::cerr << "Usage: mkdir <directory-name>" << std::endl;
+                std::cout << "Usage: mkdir <directory-name>" << std::endl;
             }else{
                 FileSystem::mkdir(comm.params.at(0));
             }
             break;
         case RMDIR:
             if(comm.params.size() != 1){
-                std::cerr << "Usage: rmdir <directory-name>" << std::endl;
+                std::cout << "Usage: rmdir <directory-name>" << std::endl;
             }else{
                 FileSystem::rmdir(comm.params.at(0));
             }
@@ -63,19 +63,19 @@ void Commands::commandController(const std::string& command) {
             }else if(comm.params.size() == 1){
                 FileSystem::ls(comm.params.at(0));
             }else{
-                std::cerr << "Usage: ls <directory-name>" << std::endl;
+                std::cout << "Usage: ls <directory-name>" << std::endl;
             }
             break;
         case CAT:
             if(comm.params.size() != 1){
-                std::cerr << "Usage: cat <file-name>" << std::endl;
+                std::cout << "Usage: cat <file-name>" << std::endl;
             }else{
                 FileSystem::cat(comm.params.at(0));
             }
             break;
         case CD:
             if(comm.params.size() != 1){
-                std::cerr << "Usage: cd <directory-name>" << std::endl;
+                std::cout << "Usage: cd <directory-name>" << std::endl;
             }else{
 
                 FileSystem::cd(comm.params.at(0));
@@ -83,60 +83,68 @@ void Commands::commandController(const std::string& command) {
             break;
         case PWD:
             if(comm.params.size() != 0){
-                std::cerr << "Usage: pwd" << std::endl;
+                std::cout << "Usage: pwd" << std::endl;
             }else{
                FileSystem::pwd();
             }
             break;
         case INFO:
             if(comm.params.size() != 1){
-                std::cerr << "Usage: info <directory-name/file-name>" << std::endl;
+                std::cout << "Usage: info <directory-name/file-name>" << std::endl;
             }else{
                 FileSystem::info(comm.params.at(0));
             }
             break;
         case INCP:
             if(comm.params.size() != 2){
-                std::cerr << "Usage: incp <source-file> <target-file>" << std::endl;
+                std::cout << "Usage: incp <source-file> <target-file>" << std::endl;
             }else{
                 FileSystem::incp(comm.params.at(0), comm.params.at(1));
             }
             break;
         case OUTCP:
             if(comm.params.size() != 2){
-                std::cerr << "Usage: outcp <source-file> <target-file>" << std::endl;
+                std::cout << "Usage: outcp <source-file> <target-file>" << std::endl;
             }else{
                 FileSystem::outcp(comm.params.at(0), comm.params.at(1));
             }
             break;
         case LOAD:
             if(comm.params.size() != 1){
-                std::cerr << "Usage: load <file-with-commands>" << std::endl;
+                std::cout << "Usage: load <file-with-commands>" << std::endl;
             }else{
-                //TODO Call method
+                FileSystem::load(comm.params.at(0));
             }
             break;
         case FORMAT:
             if(comm.params.size() != 1){
-                std::cerr << "Usage: format <format-size>" << std::endl;
+                std::cout << "Usage: format <format-size>" << std::endl;
             }else{
 
                 if(comm.params.at(0).length() < 2){
-                    std::cerr << "Size was not entered correctly" << std::endl;
+                    std::cout << "Size was not entered correctly" << std::endl;
                 } else{
                     FileSystem::formatSystem(comm.params.at(0));
                 }
             }
             break;
+        case HARD_LINK:
+            if(comm.params.size() != 2){
+                std::cout << "Usage: ln <source-file> <hard-link>" << std::endl;
+            }else{
+                FileSystem::ln(comm.params.at(0), comm.params.at(1));
+            }
+            break;
+        case BAD_COMMAND:
         default:
-            std::cerr << "Unknown command" << std::endl;
+            std::cout << "UNKNOWN COMMAND" << std::endl;
             break;
 
     }
 }
 
 SingleCommand Commands::parseCommand(const std::string &command) {
-    int value = 0;
+    int value = BAD_COMMAND;
     std::vector<std::string> vecParams;
 
     std::stringstream streamStr(command);

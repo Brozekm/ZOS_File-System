@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-
+#define BAD_COMMAND 0
 #define COPY 1
 #define MOVE 2
 #define REMOVE 3
@@ -24,6 +24,7 @@
 #define OUTCP 12
 #define LOAD 13
 #define FORMAT 14
+#define HARD_LINK 15
 
 class SingleCommand{
 private:
@@ -39,7 +40,7 @@ struct Comm{
 };
 class Commands{
 public:
-    inline static const std::vector<Comm> aviCommands{{COPY, "cp"}, {MOVE, "mv"}, {REMOVE, "rm"}, {MKDIR, "mkdir"}, {RMDIR, "rmdir"}, {LIST, "ls"}, {CAT, "cat"}, {CD, "cd"}, {PWD, "pwd"}, {INFO, "info"}, {INCP, "incp"}, {OUTCP, "outcp"}, {LOAD, "load"}, {FORMAT, "format"}};
+    inline static const std::vector<Comm> aviCommands{{COPY, "cp"}, {MOVE, "mv"}, {REMOVE, "rm"}, {MKDIR, "mkdir"}, {RMDIR, "rmdir"}, {LIST, "ls"}, {CAT, "cat"}, {CD, "cd"}, {PWD, "pwd"}, {INFO, "info"}, {INCP, "incp"}, {OUTCP, "outcp"}, {LOAD, "load"}, {FORMAT, "format"}, {HARD_LINK, "ln"}};
 public:
     static void commandController(const std::string& command);
 private:

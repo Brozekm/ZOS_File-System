@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 #include "FileSystem.h"
+#include "Commands.h"
 
 std::string FileSystem::systemName;
 std::fstream FileSystem::fileSystem;
@@ -427,7 +428,10 @@ void FileSystem::rmdir(const std::string &path) {
     std::string file, dir;
     file = getFileFromPath(path);
     dir = getDirectoriesFromPath(path);
-
+    if ((pwdPath == "/") && ((file == ".") || (file == ".."))){
+        std::cout << "CANNOT DELETE ROOT" << std::endl;
+        return;
+    }
     auto currentHolder = PsInode {};
     currentHolder = currentInode;
 
@@ -435,7 +439,57 @@ void FileSystem::rmdir(const std::string &path) {
         std::cout << "FILE NOT FOUND" << std::endl;
         return;
     }
+    long index = -1;
+    for (int i = 0; i < BLOCK_SIZE; i+=sizeof(DirectoryItem)) {
+        auto dirItem = DirectoryItem {};
+        fileSystem.seekg(superBlock->data_start_address + currentInode.direct[0] * BLOCK_SIZE + i, std::ios::beg);
+        fileSystem.read((char *) &dirItem, sizeof(DirectoryItem));
+        if (file == dirItem.item_name){
+            index = dirItem.inode;
+            break;
+        }
+    }
+    if (index == -1 ){
+        std::cout<< "FILE NOT FOUND" << std::endl;
+        currentInode = currentHolder;
+        return;
+    }
+    auto fileInFs = PsInode {};
+    fileSystem.seekg(superBlock->inode_start_address + index * sizeof(PsInode), std::ios::beg);
+    fileSystem.read((char *) &fileInFs, sizeof(PsInode));
+    if (!fileInFs.isDirectory){
+        std::cout<< "FILE NOT FOUND" << std::endl;
+        currentInode = currentHolder;
+        return;
+    }
+    for (unsigned int i = 2*sizeof(DirectoryItem); i < BLOCK_SIZE; i+= sizeof(DirectoryItem)) {
+        auto tmpDirItem = DirectoryItem {};
+        fileSystem.seekg(superBlock->data_start_address + fileInFs.direct[0] * BLOCK_SIZE + i, std::ios::beg);
+        fileSystem.read((char *) &tmpDirItem, sizeof(DirectoryItem));
+        if (tmpDirItem.item_name[0] != 0){
+            std::cout << "NOT EMPTY" << std::endl;
+            currentInode = currentHolder;
+            return;
+        }
+    }
 
+    for (int i = 0; i < BLOCK_SIZE; i+=sizeof(DirectoryItem)) {
+        auto tmpDirItem = DirectoryItem {};
+        fileSystem.seekg(superBlock->data_start_address + currentInode.direct[0] * BLOCK_SIZE + i, std::ios::beg);
+        fileSystem.read((char *) &tmpDirItem, sizeof(DirectoryItem));
+        if (fileInFs.nodeid == tmpDirItem.inode){
+            auto emptyDir = DirectoryItem {};
+            fileSystem.seekp(superBlock->data_start_address + currentInode.direct[0] * BLOCK_SIZE + i, std::ios::beg);
+            fileSystem.write((char *) &emptyDir, sizeof(DirectoryItem));
+            fileSystem.flush();
+            break;
+        }
+    }
+
+    freeCluster(fileInFs.direct[0]);
+    freeInode(fileInFs.nodeid);
+    std::cout << "OK" << std::endl;
+    currentInode = currentHolder;
 }
 
 void FileSystem::rm(const std::string &path) {
@@ -475,26 +529,38 @@ void FileSystem::rm(const std::string &path) {
         return;
     }
 
-    for (unsigned int direct : fileInFs.direct){
-        if (direct != 0){
-            freeCluster(direct);
-        }
-    }
-    for (unsigned int indirect : fileInFs.inDirect) {
-        if (indirect != 0){
-            for (int i = 0; i < BLOCK_SIZE; i+=sizeof(unsigned int)) {
-                unsigned int index;
-                fileSystem.seekg(superBlock->data_start_address + indirect * BLOCK_SIZE + i, std::ios::beg);
-                fileSystem.read(reinterpret_cast<char *>(&index), sizeof(index));
-
-                if (index == 0){
-                    break;
+    if(fileInFs.references < 2){
+        for (unsigned int direct : fileInFs.direct){
+            if (direct != 0){
+                fileSystem.seekp(superBlock->data_start_address + direct*BLOCK_SIZE, std::ios::beg);
+                for (int j = 0; j < BLOCK_SIZE; ++j) {
+                    fileSystem.put('\0');
                 }
-                freeCluster(index);
+                freeCluster(direct);
             }
         }
+        for (unsigned int indirect : fileInFs.inDirect) {
+            if (indirect != 0){
+                for (int i = 0; i < BLOCK_SIZE; i+=sizeof(unsigned int)) {
+                    unsigned int index;
+                    fileSystem.seekg(superBlock->data_start_address + indirect * BLOCK_SIZE + i, std::ios::beg);
+                    fileSystem.read(reinterpret_cast<char *>(&index), sizeof(index));
+                    if (index == 0){
+                        break;
+                    }
+                    fileSystem.seekp(superBlock->data_start_address + index*BLOCK_SIZE, std::ios::beg);
+                    for (int j = 0; j < BLOCK_SIZE; ++j) {
+                        fileSystem.put('\0');
+                    }
+                    freeCluster(index);
+                }
+            }
+        }
+        freeInode(fileInFs.nodeid);
+    } else{
+        fileInFs.references--;
     }
-    freeInode(fileInFs.nodeid);
+
 
     for (int i = 2*sizeof(DirectoryItem); i < BLOCK_SIZE; i+= sizeof(DirectoryItem)) {
         auto dirItem = DirectoryItem {};
@@ -507,11 +573,97 @@ void FileSystem::rm(const std::string &path) {
             fileSystem.flush();
             break;
         }
-
     }
 
     std::cout << "OK" << std::endl;
     currentInode = currentHolder;
+}
+
+void FileSystem::ln(const std::string &fileInFileSystem, const std::string &hardLinkFile) {
+    std::string fileName, fileDir, hlName, hlDir;
+    fileName = getFileFromPath(fileInFileSystem);
+    fileDir = getDirectoriesFromPath(fileInFileSystem);
+    hlName = getFileFromPath(hardLinkFile);
+    hlDir = getDirectoriesFromPath(hardLinkFile);
+
+    if ((hlName == ".") || (hlName == "..")){
+        std::cout << "INVALID NAME" << std::endl;
+        return;
+    }
+
+    auto currentHolder = PsInode {};
+    currentHolder = currentInode;
+
+    if (!changeDirectory(fileDir)){
+        std::cout << "FILE NOT FOUND" << std::endl;
+        return;
+    }
+    long fileIndex = -1;
+    for (int i = 0; i < BLOCK_SIZE; i+=sizeof(DirectoryItem)) {
+        auto dirItem = DirectoryItem {};
+        fileSystem.seekg(superBlock->data_start_address + currentInode.direct[0] * BLOCK_SIZE + i, std::ios::beg);
+        fileSystem.read((char *) &dirItem, sizeof(DirectoryItem));
+        if (fileName == dirItem.item_name){
+            fileIndex = dirItem.inode;
+            break;
+        }
+    }
+    if (fileIndex == -1 ){
+        std::cout<< "FILE NOT FOUND" << std::endl;
+        currentInode = currentHolder;
+        return;
+    }
+    auto fileInFS = PsInode {};
+    fileSystem.seekg(superBlock->inode_start_address + fileIndex * sizeof(PsInode), std::ios::beg);
+    fileSystem.read((char *) & fileInFS, sizeof(PsInode));
+
+    if (fileInFS.isDirectory){
+        std::cout << "DIRECTORIES CANNOT HAVE HARD LINK" << std::endl;
+        currentInode = currentHolder;
+        return;
+    }
+
+    currentInode = currentHolder;
+    currentHolder = currentInode;
+
+    if(!changeDirectory(hlDir)){
+        std::cout << "FILE NOT FOUND" << std::endl;
+        return;
+    }
+
+    for (int i = 0; i < BLOCK_SIZE; i+=sizeof(DirectoryItem)) {
+        auto dirItem = DirectoryItem {};
+        fileSystem.seekg(superBlock->data_start_address + currentInode.direct[0] * BLOCK_SIZE + i, std::ios::beg);
+        fileSystem.read((char *) &dirItem, sizeof(DirectoryItem));
+        if (hlName == dirItem.item_name){
+            std::cout << "EXISTS" << std::endl;
+            currentInode = currentHolder;
+            return;
+        }
+    }
+
+    for (int i = 0; i < BLOCK_SIZE; i+=sizeof(DirectoryItem)) {
+        auto dirItem = DirectoryItem {};
+        fileSystem.seekg(superBlock->data_start_address + currentInode.direct[0] * BLOCK_SIZE + i, std::ios::beg);
+        fileSystem.read((char *) &dirItem, sizeof(DirectoryItem));
+        if (dirItem.item_name[0] == 0){
+            auto newHLink = DirectoryItem {};
+            newHLink.inode = fileInFS.nodeid;
+            strcpy(newHLink.item_name, hlName.c_str());
+            fileSystem.seekp(superBlock->data_start_address + currentInode.direct[0] * BLOCK_SIZE + i, std::ios::beg);
+            fileSystem.write((char *) &newHLink, sizeof(DirectoryItem));
+            fileSystem.flush();
+            break;
+        }
+    }
+
+    fileInFS.references++;
+    fileSystem.seekp(superBlock->inode_start_address + fileInFS.nodeid * sizeof(PsInode), std::ios::beg);
+    fileSystem.write((char *) &fileInFS, sizeof(PsInode));
+    fileSystem.flush();
+
+    currentInode = currentHolder;
+    std::cout << "OK" << std::endl;
 }
 
 bool FileSystem::cp(const std::string &currentPath, const std::string &newFilePath) {
@@ -574,6 +726,22 @@ bool FileSystem::cp(const std::string &currentPath, const std::string &newFilePa
     createFile(newFile, content, fileInFs.file_size);
     currentInode = currentHolder;
     return true;
+}
+
+
+void FileSystem::load(const std::string &path) {
+    std::ifstream inputStream;
+    inputStream.open(path);
+    if (inputStream.is_open()){
+        std::string line;
+        while (std::getline(inputStream, line)){
+            Commands::commandController(line);
+        }
+        inputStream.close();
+        std::cout << "OK" <<std::endl;
+    }else{
+        std::cout << "FILE NOT FOUND" << std::endl;
+    }
 }
 
 void FileSystem::incp(const std::string & extFile,const std::string &inpFile) {
@@ -696,7 +864,10 @@ std::string FileSystem::getDirectoriesFromPath(const std::string &path) {
 
 /** Functions working with file system */
 void FileSystem::createFile(std::string &fileName, const std::string& content, unsigned long size) {
-    unsigned long clustersNeeded = (size/(BLOCK_SIZE))+1;
+    unsigned long clustersNeeded = (size/(BLOCK_SIZE));
+    if (size % BLOCK_SIZE != 0){
+        clustersNeeded ++;
+    }
     unsigned int indirectNeeded = 0;
     unsigned long numberOfAddInIndirect = superBlock->cluster_size / sizeof(unsigned int);
 
@@ -988,6 +1159,9 @@ std::string FileSystem::getFileContent(const PsInode &fileInFS){
     std::cout << content << std::endl;
     return content;
 }
+
+
+
 
 
 

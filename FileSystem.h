@@ -14,7 +14,7 @@
 #define MEGABYTE 1000
 #define KILOBYTE 1
 
-#define BLOCK_SIZE 1024
+#define BLOCK_SIZE 4096
 
 
 typedef struct SUPERBLOCK {
@@ -80,6 +80,10 @@ public:
     static void info(const std::string &path);
 
     static void rmdir(const std::string &path);
+
+    static void load(const std::string &path);
+
+    static void ln(const std::string &fileInFileSystem, const std::string &hardLinkFile);
 
 private:
     static std::string pwdPath;
